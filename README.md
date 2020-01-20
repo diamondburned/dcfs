@@ -8,7 +8,7 @@ AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA.
 
 ## How?
 
-```go
+```sh
 mkdir /tmp/dcfs
 
 # Only run this if first timer
