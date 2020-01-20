@@ -2,9 +2,11 @@ module github.com/diamondburned/dcfs
 
 go 1.13
 
+replace github.com/diamondburned/arikawa => /home/diamond/Scripts/arikawa/
+
 require (
 	bazil.org/fuse v0.0.0-20200117225306-7b5117fecadc
-	github.com/diamondburned/arikawa master
+	github.com/diamondburned/arikawa v0.0.6
 	github.com/hanwen/go-fuse v1.0.0
 	github.com/hanwen/go-fuse/v2 v2.0.2
 	github.com/joho/godotenv v1.3.0

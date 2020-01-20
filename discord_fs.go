@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"log"
 	"os"
 	"sync"
 	"sync/atomic"
@@ -34,7 +35,11 @@ type Filesystem struct {
 }
 
 func NewFS(s *state.State) (*Filesystem, error) {
-	fmtter, err := NewFormatter(nil)
+	fmtter, err := NewFormatter(&FormatterOpts{
+		Delimiter: ',',
+		State:     s,
+	})
+
 	if err != nil {
 		return nil, errors.Wrap(err, "Failed to create a formatter")
 	}
@@ -62,7 +67,7 @@ var _ fs.Node = (*Filesystem)(nil)
 func (fs *Filesystem) Attr(ctx context.Context, attr *fuse.Attr) error {
 	attr.Mode = os.ModeDir | 0664
 	attr.Inode = fs.Inode
-	// attr.Valid = time.Minute
+	attr.Valid = time.Minute
 	return nil
 }
 
@@ -76,7 +81,7 @@ func (fs *Filesystem) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 
 	var res = make([]fuse.Dirent, len(fs.Guilds))
 	for i, g := range fs.Guilds {
-		res[i].Name = g.ID.String()
+		res[i].Name = g.Name
 		res[i].Type = fuse.DT_Dir
 	}
 
@@ -89,7 +94,7 @@ func (fs *Filesystem) Lookup(ctx context.Context,
 	req *fuse.LookupRequest, resp *fuse.LookupResponse) (fs.Node, error) {
 
 	for _, g := range fs.Guilds {
-		if g.ID.String() == req.Name {
+		if g.Name == req.Name {
 			return g, nil
 		}
 	}
@@ -102,7 +107,8 @@ type Guild struct {
 	FS    *Filesystem
 	Inode uint64
 
-	ID discord.Snowflake
+	ID   discord.Snowflake
+	Name string
 
 	Channels []*Channel
 	mu       sync.Mutex
@@ -111,7 +117,7 @@ type Guild struct {
 func (g *Guild) Attr(ctx context.Context, attr *fuse.Attr) error {
 	attr.Mode = os.ModeDir | 0664
 	attr.Inode = g.Inode
-	// attr.Valid = time.Minute
+	attr.Valid = time.Minute
 	return nil
 }
 
@@ -120,14 +126,13 @@ func (g *Guild) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 
 	// Also cached for a minute, whatever.
 	if err := g.UpdateChannels(); err != nil {
+		log.Println("Fail at ReadAll: Failed to update channels:", err)
 		return nil, errors.Wrap(err, "Failed to update channels")
 	}
 
 	for i, ch := range g.Channels {
-		res[i] = fuse.Dirent{
-			Name: ch.ID.String(),
-			Type: fuse.DT_File,
-		}
+		res[i].Name = ch.Name
+		res[i].Type = fuse.DT_File
 	}
 
 	return res, nil
@@ -137,7 +142,7 @@ func (g *Guild) Lookup(ctx context.Context,
 	req *fuse.LookupRequest, resp *fuse.LookupResponse) (fs.Node, error) {
 
 	for _, ch := range g.Channels {
-		if ch.ID.String() == req.Name {
+		if ch.Name == req.Name {
 			return ch, nil
 		}
 	}
@@ -155,12 +160,14 @@ type Channel struct {
 
 	ID       discord.Snowflake
 	Category discord.Snowflake
+	Name     string
 	Position int
 }
 
 func (ch *Channel) Attr(ctx context.Context, attr *fuse.Attr) error {
 	// Fetch the messages and fill up latest LastSz and LastMod.
 	if _, err := ch.render(); err != nil {
+		log.Println("Fail at Attr:", err)
 		return err
 	}
 
@@ -180,8 +187,26 @@ func (ch *Channel) Open(ctx context.Context,
 	return ch, nil
 }
 
+func (ch *Channel) Write(ctx context.Context,
+	req *fuse.WriteRequest, resp *fuse.WriteResponse) error {
+
+	_, err := ch.FS.State.SendMessage(ch.ID, string(req.Data), nil)
+	if err != nil {
+		return errors.Wrap(err, "Failed to send message")
+	}
+
+	resp.Size = len(req.Data)
+
+	return nil
+}
+
 func (ch *Channel) ReadAll(ctx context.Context) ([]byte, error) {
-	return ch.render()
+	b, err := ch.render()
+	if err != nil {
+		log.Println("Fail at ReadAll:", err)
+	}
+
+	return b, err
 }
 
 func (ch *Channel) render() ([]byte, error) {

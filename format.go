@@ -2,11 +2,14 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
+	"fmt"
 	"log"
 	"strconv"
 	"strings"
 	"sync"
 	"text/template"
+	"time"
 
 	"github.com/diamondburned/arikawa/discord"
 	"github.com/diamondburned/arikawa/state"
@@ -25,13 +28,15 @@ type Formatter struct {
 
 type FormatterOpts struct {
 	Delimiter rune
+	State     *state.State
 }
 
 var (
 	// TODO functions
 
 	DefaultMessageTemplate = []string{
-		"{{.Author.Username}}", "{{.Content}}",
+		"{{nickname .}}", "{{color .}}",
+		`{{time .Timestamp "3:04PM"}}`, "{{.Content}}", "{{json .Embeds}}",
 	}
 	DefaultFormatterOpts = FormatterOpts{
 		Delimiter: ',',
@@ -59,10 +64,11 @@ func NewFormatter(opts *FormatterOpts) (*Formatter, error) {
 		BufPool: sync.Pool{
 			New: NewBufferCreator(),
 		},
+		State: opts.State,
 	}
 
 	if err := fmtter.ChangeMessageTemplate(DefaultMessageTemplate); err != nil {
-		return nil, errors.Wrap(err, "Failed to create the message template")
+		panic("BUG on ChangeMessageTemplate:" + err.Error())
 	}
 
 	return fmtter, nil
@@ -74,7 +80,10 @@ func (f *Formatter) ChangeMessageTemplate(fmts []string) error {
 	for i, fmt := range fmts {
 		d := strconv.Itoa(i)
 
-		t, err := template.New("message_" + d).Parse(fmt)
+		t, err := template.
+			New("message_" + d).
+			Funcs(f.funcMap()).
+			Parse(fmt)
 		if err != nil {
 			return errors.Wrap(err, "Failed to parse arg "+d)
 		}
@@ -98,12 +107,13 @@ func (f *Formatter) RenderMessage(msg discord.Message) (string, error) {
 	defer f.BufPool.Put(buf)
 
 	for i, tmpl := range f.messageTemplater {
+		buf.Reset()
+
 		if err := tmpl.Execute(buf, msg); err != nil {
 			return "", errors.Wrap(err, "Failed to execute template on msg")
 		}
 
 		cols[i] = newliner.Replace(buf.String())
-		buf.Reset()
 	}
 
 	csv := f.CSVPool.Get().(*CSV)
@@ -118,7 +128,9 @@ func (f *Formatter) RenderMessages(msgs []discord.Message) (string, error) {
 
 	buf.Reset()
 
-	for _, msg := range msgs {
+	for i := len(msgs) - 1; i >= 0; i-- {
+		msg := msgs[i]
+
 		m, err := f.RenderMessage(msg)
 		if err != nil {
 			return "", errors.Wrap(err,
@@ -129,4 +141,64 @@ func (f *Formatter) RenderMessages(msgs []discord.Message) (string, error) {
 	}
 
 	return buf.String(), nil
+}
+
+func (f *Formatter) funcMap() template.FuncMap {
+	return map[string]interface{}{
+		"nickname": func(m discord.Message) string {
+			if !m.GuildID.Valid() {
+				return m.Author.Username
+			}
+
+			member, err := f.State.Member(m.GuildID, m.Author.ID)
+			if err != nil {
+				return m.Author.Username
+			}
+
+			if member.Nick == "" {
+				return m.Author.Username
+			}
+
+			return member.Nick
+		},
+		"color": func(m discord.Message) string {
+			if !m.GuildID.Valid() {
+				return m.Author.Username
+			}
+
+			member, err := f.State.Member(m.GuildID, m.Author.ID)
+			if err != nil {
+				return m.Author.Username
+			}
+
+			guild, err := f.State.Guild(m.GuildID)
+			if err != nil {
+				return m.Author.Username
+			}
+
+			return fmt.Sprintf("#%06X", discord.MemberColor(*guild, *member))
+		},
+		"time": func(ts discord.Timestamp, fmt string) string {
+			return time.Time(ts).Format(fmt)
+		},
+		"content": func(m discord.Message) string {
+			b := strings.Builder{}
+			b.WriteString(m.Content)
+
+			for _, a := range m.Attachments {
+				b.WriteString(" " + a.URL)
+			}
+
+			return b.String()
+		},
+		"json": func(v interface{}) string {
+			b, err := json.Marshal(v)
+			if err != nil {
+				log.Println("JSON error:", err)
+				return "ERR"
+			}
+
+			return string(b)
+		},
+	}
 }

@@ -18,7 +18,7 @@ func main() {
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr,
-			"Usage: %s [flags...] mountpoint\n", os.Args[0])
+			"Usage: %s [flags...] mountpoint [format...]\n", os.Args[0])
 		flag.PrintDefaults()
 	}
 
@@ -73,7 +73,18 @@ func main() {
 		log.Fatalln("Failed to create a filesystem:", err)
 	}
 
+	if args := flag.Args(); len(args) > 2 {
+		if err := FS.Fmt.ChangeMessageTemplate(args[1:]); err != nil {
+			log.Fatalln("Failed to change message template:", err)
+		}
+	}
+
 	log.Println("Created a filesystem")
+
+	// Unmount before mounting, just in case.
+	if fuse.Unmount(mountpoint) == nil {
+		log.Println("Unmounted")
+	}
 
 	c, err := fuse.Mount(mountpoint)
 	if err != nil {
