@@ -29,9 +29,3 @@ func (csv *CSV) Render(cols []string) (string, error) {
 	csv.csv.Flush()
 	return csv.buf.String(), csv.csv.Error()
 }
-
-func NewBufferCreator() func() interface{} {
-	return func() interface{} {
-		return new(bytes.Buffer)
-	}
-}

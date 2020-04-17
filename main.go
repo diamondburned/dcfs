@@ -8,12 +8,17 @@ import (
 
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
+	"github.com/diamondburned/arikawa/gateway"
 	"github.com/diamondburned/arikawa/session"
 	"github.com/diamondburned/arikawa/state"
 	"github.com/joho/godotenv"
 )
 
 func main() {
+	gateway.WSDebug = func(v ...interface{}) {
+		log.Println(v...)
+	}
+
 	cfgPath := flag.String("c", "", "Path to the config (.env) file")
 
 	flag.Usage = func() {
@@ -63,10 +68,14 @@ func main() {
 		log.Fatalln("Failed to create a Discord state:", err)
 	}
 
+	log.Println("Created a session. Logging in.")
+
 	if err := s.Open(); err != nil {
 		log.Fatalln("Failed to open a Discord connection:", err)
 	}
 	defer s.Close()
+
+	log.Println("Connected.")
 
 	FS, err := NewFS(s)
 	if err != nil {

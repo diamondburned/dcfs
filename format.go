@@ -20,7 +20,6 @@ type Formatter struct {
 	State *state.State
 
 	CSVPool sync.Pool
-	BufPool sync.Pool
 
 	messageTemplate  []string
 	messageTemplater []*template.Template
@@ -35,8 +34,7 @@ var (
 	// TODO functions
 
 	DefaultMessageTemplate = []string{
-		"{{nickname .}}", "{{color .}}",
-		`{{time .Timestamp "3:04PM"}}`, "{{.Content}}", "{{json .Embeds}}",
+		"{{.Author.Username}}", `{{time .Timestamp "3:04PM"}}`, "{{.Content}}", "{{json .Embeds}}",
 	}
 	DefaultFormatterOpts = FormatterOpts{
 		Delimiter: ',',
@@ -60,9 +58,6 @@ func NewFormatter(opts *FormatterOpts) (*Formatter, error) {
 	fmtter := &Formatter{
 		CSVPool: sync.Pool{
 			New: NewCSVCreator(opts.Delimiter),
-		},
-		BufPool: sync.Pool{
-			New: NewBufferCreator(),
 		},
 		State: opts.State,
 	}
@@ -103,17 +98,15 @@ var newliner = strings.NewReplacer(
 func (f *Formatter) RenderMessage(msg discord.Message) (string, error) {
 	var cols = make([]string, len(f.messageTemplater))
 
-	buf := f.BufPool.Get().(*bytes.Buffer)
-	defer f.BufPool.Put(buf)
+	var buf = &bytes.Buffer{}
 
 	for i, tmpl := range f.messageTemplater {
-		buf.Reset()
-
 		if err := tmpl.Execute(buf, msg); err != nil {
 			return "", errors.Wrap(err, "Failed to execute template on msg")
 		}
 
 		cols[i] = newliner.Replace(buf.String())
+		buf.Reset()
 	}
 
 	csv := f.CSVPool.Get().(*CSV)
@@ -123,10 +116,7 @@ func (f *Formatter) RenderMessage(msg discord.Message) (string, error) {
 }
 
 func (f *Formatter) RenderMessages(msgs []discord.Message) (string, error) {
-	buf := f.BufPool.Get().(*bytes.Buffer)
-	defer f.BufPool.Put(buf)
-
-	buf.Reset()
+	buf := &bytes.Buffer{}
 
 	for i := len(msgs) - 1; i >= 0; i-- {
 		msg := msgs[i]

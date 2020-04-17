@@ -5,20 +5,21 @@ import (
 	"strings"
 
 	"github.com/diamondburned/arikawa/discord"
-	"github.com/diamondburned/arikawa/gateway"
 	"github.com/pkg/errors"
 )
 
 func (fs *Filesystem) UpdateGuilds() error {
+	fs.mu.Lock()
+	defer fs.mu.Unlock()
+
+	log.Println("Updating guilds.")
+
 	guilds, err := fs.State.Guilds()
 	if err != nil {
 		log.Fatalln("Failed to get guilds:", err)
 	}
 
 	newGuilds := guilds[:0]
-
-	fs.mu.Lock()
-	defer fs.mu.Unlock()
 
 Main:
 	for _, guild := range guilds {
@@ -31,6 +32,8 @@ Main:
 		newGuilds = append(newGuilds, guild)
 	}
 
+	log.Println("New guilds:", len(newGuilds))
+
 	for _, g := range newGuilds {
 		guild := &Guild{
 			ID:    g.ID,
@@ -39,16 +42,19 @@ Main:
 			Inode: NewInode(),
 		}
 
-		if err := guild.UpdateChannels(); err != nil {
-			return errors.Wrap(err, "Failed to update guild "+g.ID.String())
-		}
+		go func() {
+			if err := guild.UpdateChannels(); err != nil {
+				log.Println("Failed to update guild "+g.ID.String()+":", err)
+			}
+			log.Println("Fetched", guild.Name)
+		}()
 
 		// Subscribe to guilds
-		fs.State.Gateway.GuildSubscribe(gateway.GuildSubscribeData{
-			GuildID:    g.ID,
-			Typing:     true,
-			Activities: true,
-		})
+		// fs.State.Gateway.GuildSubscribe(gateway.GuildSubscribeData{
+		// 	GuildID:    g.ID,
+		// 	Typing:     false,
+		// 	Activities: false,
+		// })
 
 		fs.Guilds = append(fs.Guilds, guild)
 	}
@@ -57,15 +63,17 @@ Main:
 }
 
 func (g *Guild) UpdateChannels() error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	log.Println("Updating channels.")
+
 	channels, err := g.FS.State.Channels(g.ID)
 	if err != nil {
 		return errors.Wrap(err, "Failed to get channels")
 	}
 
 	newChs := channels[:0]
-
-	g.mu.Lock()
-	defer g.mu.Unlock()
 
 Main:
 	for _, channel := range channels {
@@ -78,7 +86,15 @@ Main:
 		newChs = append(newChs, channel)
 	}
 
+	log.Println("New channels:", len(newChs))
+
 	for _, ch := range newChs {
+		switch ch.Type {
+		case discord.GuildText, discord.GroupDM, discord.DirectMessage:
+		default:
+			continue
+		}
+
 		var name = ch.Name
 
 		if len(ch.DMRecipients) > 0 {

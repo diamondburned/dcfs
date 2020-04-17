@@ -51,6 +51,8 @@ func NewFS(s *state.State) (*Filesystem, error) {
 		State:       s,
 	}
 
+	log.Println("Fetching guilds...")
+
 	if err := fs.UpdateGuilds(); err != nil {
 		return nil, errors.Wrap(err, "Failed to update guilds")
 	}
@@ -122,14 +124,13 @@ func (g *Guild) Attr(ctx context.Context, attr *fuse.Attr) error {
 }
 
 func (g *Guild) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
-	var res = make([]fuse.Dirent, len(g.Channels))
-
 	// Also cached for a minute, whatever.
 	if err := g.UpdateChannels(); err != nil {
 		log.Println("Fail at ReadAll: Failed to update channels:", err)
 		return nil, errors.Wrap(err, "Failed to update channels")
 	}
 
+	var res = make([]fuse.Dirent, len(g.Channels))
 	for i, ch := range g.Channels {
 		res[i].Name = ch.Name
 		res[i].Type = fuse.DT_File
