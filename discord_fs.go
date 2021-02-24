@@ -10,8 +10,8 @@ import (
 
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
-	"github.com/diamondburned/arikawa/discord"
-	"github.com/diamondburned/arikawa/state"
+	"github.com/diamondburned/arikawa/v2/discord"
+	"github.com/diamondburned/arikawa/v2/state"
 	"github.com/pkg/errors"
 )
 
@@ -109,7 +109,7 @@ type Guild struct {
 	FS    *Filesystem
 	Inode uint64
 
-	ID   discord.Snowflake
+	ID   discord.GuildID
 	Name string
 
 	Channels []*Channel
@@ -159,8 +159,8 @@ type Channel struct {
 	LastMod time.Time
 	LastSz  uint64
 
-	ID       discord.Snowflake
-	Category discord.Snowflake
+	ID       discord.ChannelID
+	Category discord.ChannelID
 	Name     string
 	Position int
 }

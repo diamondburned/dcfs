@@ -11,8 +11,8 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/diamondburned/arikawa/discord"
-	"github.com/diamondburned/arikawa/state"
+	"github.com/diamondburned/arikawa/v2/discord"
+	"github.com/diamondburned/arikawa/v2/state"
 	"github.com/pkg/errors"
 )
 
@@ -34,7 +34,8 @@ var (
 	// TODO functions
 
 	DefaultMessageTemplate = []string{
-		"{{.Author.Username}}", `{{time .Timestamp "3:04PM"}}`, "{{.Content}}", "{{json .Embeds}}",
+		"{{.Author.Username}}({{.Author.ID}})", `{{time .Timestamp "3:04PM"}}`, "{{.Content}}", "{{json .Embeds}}",
+		// Use Author.ID and Author.Username - Bot friendly
 	}
 	DefaultFormatterOpts = FormatterOpts{
 		Delimiter: ',',
@@ -136,7 +137,7 @@ func (f *Formatter) RenderMessages(msgs []discord.Message) (string, error) {
 func (f *Formatter) funcMap() template.FuncMap {
 	return map[string]interface{}{
 		"nickname": func(m discord.Message) string {
-			if !m.GuildID.Valid() {
+			if !m.GuildID.IsValid() {
 				return m.Author.Username
 			}
 
@@ -152,7 +153,7 @@ func (f *Formatter) funcMap() template.FuncMap {
 			return member.Nick
 		},
 		"color": func(m discord.Message) string {
-			if !m.GuildID.Valid() {
+			if !m.GuildID.IsValid() {
 				return m.Author.Username
 			}
 

@@ -8,14 +8,15 @@ import (
 
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
-	"github.com/diamondburned/arikawa/gateway"
-	"github.com/diamondburned/arikawa/session"
-	"github.com/diamondburned/arikawa/state"
+	"github.com/diamondburned/arikawa/v2/utils/wsutil"
+	"github.com/diamondburned/arikawa/v2/state/store/defaultstore"
+	"github.com/diamondburned/arikawa/v2/session"
+	"github.com/diamondburned/arikawa/v2/state"
 	"github.com/joho/godotenv"
 )
 
 func main() {
-	gateway.WSDebug = func(v ...interface{}) {
+	wsutil.WSDebug = func(v ...interface{}) {
 		log.Println(v...)
 	}
 
@@ -36,7 +37,7 @@ func main() {
 	}
 
 	var (
-		token      = os.Getenv("TOKEN")
+		token      = os.Getenv("TOKEN") //""
 		username   = os.Getenv("USERNAME")
 		password   = os.Getenv("PASSWORD")
 		mountpoint = flag.Arg(0)
@@ -63,11 +64,11 @@ func main() {
 		log.Fatalln("Failed to authenticate:", err)
 	}
 
-	s, err := state.NewFromSession(ses, state.NewDefaultStore(nil))
-	if err != nil {
-		log.Fatalln("Failed to create a Discord state:", err)
-	}
-
+	s := state.NewFromSession(ses, defaultstore.New())
+	/*
+	NewFromSession never returns an error
+	> https://github.com/diamondburned/arikawa/blob/6c3becbdc5ef1a6032889be260b2c5d4313e6246/state/state.go#L123
+	*/
 	log.Println("Created a session. Logging in.")
 
 	if err := s.Open(); err != nil {
@@ -94,7 +95,6 @@ func main() {
 	if fuse.Unmount(mountpoint) == nil {
 		log.Println("Unmounted")
 	}
-
 	c, err := fuse.Mount(mountpoint)
 	if err != nil {
 		log.Fatalln("Failed to mount FUSE:", err)
