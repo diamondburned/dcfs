@@ -16,6 +16,24 @@ import (
 )
 
 func main() {
+
+	go func() {
+		c := make(chan os.Signal)
+		signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+		for {
+			<-c
+			log.Println("Ctrl+C pressed in Terminal")
+			if fuse.Unmount(flag.Arg(0)) == nil {
+				log.Println("Unmounted")
+			}
+			os.Exit(0)
+		}
+	}()
+	// Handle ctrl+c
+
+	signal.Ignore(syscall.SIGHUP)
+	// Ignore terminal loss // Useful for daemonization
+
 	wsutil.WSDebug = func(v ...interface{}) {
 		log.Println(v...)
 	}
