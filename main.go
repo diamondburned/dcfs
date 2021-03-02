@@ -5,35 +5,24 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
-	"github.com/diamondburned/arikawa/v2/utils/wsutil"
-	"github.com/diamondburned/arikawa/v2/state/store/defaultstore"
 	"github.com/diamondburned/arikawa/v2/session"
 	"github.com/diamondburned/arikawa/v2/state"
+	"github.com/diamondburned/arikawa/v2/state/store/defaultstore"
+	"github.com/diamondburned/arikawa/v2/utils/wsutil"
 	"github.com/joho/godotenv"
 )
 
-func main() {
-
-	go func() {
-		c := make(chan os.Signal)
-		signal.Notify(c, os.Interrupt, syscall.SIGTERM)
-		for {
-			<-c
-			log.Println("Ctrl+C pressed in Terminal")
-			if fuse.Unmount(flag.Arg(0)) == nil {
-				log.Println("Unmounted")
-			}
-			os.Exit(0)
-		}
-	}()
-	// Handle ctrl+c
-
-	signal.Ignore(syscall.SIGHUP)
+func init() {
 	// Ignore terminal loss // Useful for daemonization
+	signal.Ignore(syscall.SIGHUP)
+}
 
+func main() {
 	wsutil.WSDebug = func(v ...interface{}) {
 		log.Println(v...)
 	}
@@ -84,15 +73,15 @@ func main() {
 
 	s := state.NewFromSession(ses, defaultstore.New())
 	/*
-	NewFromSession never returns an error
-	> https://github.com/diamondburned/arikawa/blob/6c3becbdc5ef1a6032889be260b2c5d4313e6246/state/state.go#L123
+		NewFromSession never returns an error
+		> https://github.com/diamondburned/arikawa/blob/6c3becbdc5ef1a6032889be260b2c5d4313e6246/state/state.go#L123
 	*/
 	log.Println("Created a session. Logging in.")
 
 	if err := s.Open(); err != nil {
 		log.Fatalln("Failed to open a Discord connection:", err)
 	}
-	defer s.Close()
+	defer s.CloseGracefully()
 
 	log.Println("Connected.")
 
@@ -131,10 +120,22 @@ func main() {
 		log.Fatalln("Failed to serve filesystem:", err)
 	}
 
-	// Block until there's an error
-	<-c.Ready
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, os.Interrupt, syscall.SIGTERM)
 
-	if err := c.MountError; err != nil {
-		log.Fatalln("Mount error:", err)
+	select {
+	case <-c.Ready:
+		if err := c.MountError; err != nil {
+			log.Fatalln("Mount error:", err)
+		}
+
+	case <-sigs:
+		log.Println("Ctrl+C pressed in Terminal or SIGTERM received.")
 	}
+
+	if err := fuse.Unmount(flag.Arg(0)); err != nil {
+		log.Fatalln("Failed to unmount on close:", err)
+	}
+
+	log.Println("Unmounted")
 }
